@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import CheckButtons
 
 # Fetch historical data for NVDA
-symbol = 'AAPL'
+symbol = 'TSLA'
 start_date = '2023-01-01'
 data = yf.download(symbol, start=start_date)
 
@@ -55,20 +55,23 @@ if not sell_signals.empty:
     lines.append(l_sell)
     labels.append('Sell Signal')
 
-ax.set_title('Moving Average Crossover')
+ax.set_title(f'{symbol}: Moving Average Crossover')
 ax.grid(True)
 
 # Calculate investment returns
 def calculate_returns(data, buy_signals, sell_signals, initial_investment=1000):
+    # Trading strategy portfolio
     portfolio = pd.DataFrame(index=data.index)
     portfolio['holdings'] = 0  # Shares held
-    portfolio['cash'] = initial_investment  # Cash on hand
+    portfolio['cash'] = 0  # Cash on hand
     portfolio['price'] = data['Close']  # Share price
     portfolio['position'] = data['Position']  # Buy/sell signals
     
     # Process all trading days
-    current_shares = 0
-    cash_balance = initial_investment
+    # Start by investing everything on the first day
+    initial_price = portfolio['price'].iloc[0]
+    current_shares = initial_investment / initial_price
+    cash_balance = 0
     
     for date in portfolio.index:
         # If this is a buy signal day and we have cash, buy shares
@@ -99,26 +102,58 @@ def calculate_returns(data, buy_signals, sell_signals, initial_investment=1000):
     total_return = final_value - initial_investment
     percent_return = (total_return / initial_investment) * 100
     
-    return portfolio, final_value, total_return, percent_return
+    # Buy and hold strategy
+    hold_portfolio = pd.DataFrame(index=data.index)
+    hold_portfolio['price'] = data['Close']
+    
+    # Buy at first available date
+    initial_price = hold_portfolio['price'].iloc[0]
+    shares_bought = initial_investment / initial_price
+    
+    # Calculate value over time
+    hold_portfolio['value'] = hold_portfolio['price'] * shares_bought
+    
+    # Get final stats for buy and hold
+    hold_final_value = hold_portfolio['value'].iloc[-1]
+    hold_total_return = hold_final_value - initial_investment
+    hold_percent_return = (hold_total_return / initial_investment) * 100
+    
+    return (portfolio, final_value, total_return, percent_return, 
+            hold_portfolio, hold_final_value, hold_total_return, hold_percent_return)
 
 if len(buy_signals) > 0 or len(sell_signals) > 0:
-    portfolio, final_value, total_return, percent_return = calculate_returns(data, buy_signals, sell_signals)
+    (portfolio, final_value, total_return, percent_return,
+     hold_portfolio, hold_final_value, hold_total_return, hold_percent_return) = calculate_returns(data, buy_signals, sell_signals)
     
     # Display results
     print(f"\nInvestment Results:")
     print(f"Initial Investment: ${1000:.2f}")
+    print(f"\nTrading Strategy:")
     print(f"Final Value: ${final_value:.2f}")
     print(f"Total Return: ${total_return:.2f}")
     print(f"Percent Return: {percent_return:.2f}%")
     
-    # Add portfolio value plot
+    print(f"\nBuy and Hold Strategy:")
+    print(f"Final Value: ${hold_final_value:.2f}")
+    print(f"Total Return: ${hold_total_return:.2f}")
+    print(f"Percent Return: {hold_percent_return:.2f}%")
+    
+    print(f"\nComparison:")
+    difference = total_return - hold_total_return
+    if difference > 0:
+        print(f"Trading strategy outperformed buy & hold by ${difference:.2f} ({(difference/hold_total_return*100):.2f}%)")
+    else:
+        print(f"Buy & hold outperformed trading strategy by ${-difference:.2f} ({(-difference/total_return*100):.2f}%)")
+    
+    # Add portfolio value plots
     ax2 = ax.twinx()
-    l_portfolio, = ax2.plot(portfolio['total_value'], 'purple', alpha=0.7, linewidth=1.5, label='Portfolio Value')
+    l_portfolio, = ax2.plot(portfolio['total_value'], 'purple', alpha=0.7, linewidth=1.5, label='Trading Strategy')
+    l_hold, = ax2.plot(hold_portfolio['value'], 'blue', alpha=0.7, linewidth=1.5, label='Buy & Hold')
     ax2.set_ylabel('Portfolio Value ($)', color='purple')
     
     # Add to lines and labels
-    lines.append(l_portfolio)
-    labels.append('Portfolio Value')
+    lines.extend([l_portfolio, l_hold])
+    labels.extend(['Trading Strategy', 'Buy & Hold'])
 else:
     print("\nNo trading signals detected. Cannot calculate returns.")
 
