@@ -13,13 +13,13 @@ class RentVsBuy:
         # Default parameters for Vancouver, BC (as of May 23, 2025)
         # Property parameters
         self.property_value = 1100000  # Average property price in CAD
-        self.property_appreciation_rate = 0.061  # 4% annual appreciation
+        self.property_appreciation_rate = 0.04  # 4% annual appreciation
         
         # Buying parameters
         self.down_payment_percent = 0.20  # 20% down payment
         self.mortgage_rate = 0.045  # 4.5% mortgage rate
         self.mortgage_term_years = 25  # 25 year amortization
-        self.property_tax_rate = 0.00257  # Vancouver property tax rate (0.257%)
+        self.property_tax_rate = 0.00311827  # Vancouver property tax rate (0.311827%)
         self.maintenance_percent = 0.01  # 1% of property value annually
         self.insurance_rate = 0.0035  # 0.35% of property value annually
         self.buying_closing_costs = 0.015 * self.property_value  # 1.5% of property value
@@ -34,7 +34,7 @@ class RentVsBuy:
         self.investment_return_rate = 0.06  # 6% annual return on investments
         
         # Analysis parameters
-        self.time_horizon_years = 20  # Compare over 10 years
+        self.time_horizon_years = 15  # Compare over 15 years
         self.inflation_rate = 0.025  # 2.5% annual inflation
         self.marginal_tax_rate = 0.40  # 40% marginal tax rate
         
@@ -197,20 +197,61 @@ class RentVsBuy:
         
         # 3. Net Worth Comparison
         ax3 = fig.add_subplot(4, 1, 3)
-        buy_net_worth = results["buy_equity"] - results["buy_costs"]
-        rent_net_worth = results["rent_investments"] - results["rent_costs"]
+        # Calculate net worth over time consistent with final summary
+        # Buyer's net worth: Home Equity - Potential Selling Costs
+        buy_net_worth_over_time = results["buy_equity"] - (self.selling_closing_costs_percent * results["property_values"])
+        # Renter's net worth: Total value of their investments
+        rent_net_worth_over_time = results["rent_investments"]
         
-        # Find break-even point
-        break_even_indices = np.where(buy_net_worth > rent_net_worth)[0]
-        if len(break_even_indices) > 0:
-            break_even_month = break_even_indices[0]
-            break_even_year = break_even_month / 12
-            results["break_even_year"] = break_even_year
-            ax3.axvline(x=break_even_year, color='green', linestyle='--', alpha=0.7, 
-                        label=f'Break-even: {break_even_year:.1f} years')
+        # Find break-even point - more precisely detect when lines cross
+        # Calculate the difference between buy and rent net worth
+        net_worth_diff = buy_net_worth_over_time - rent_net_worth_over_time
         
-        ax3.plot(results["time_years"], buy_net_worth, label="Buy (Net Worth)")
-        ax3.plot(results["time_years"], rent_net_worth, label="Rent (Net Worth)")
+        # Find where the difference changes from negative to positive (crossover point)
+        # This indicates the buyer's net worth has just exceeded the renter's
+        crossover_indices = np.where((net_worth_diff[:-1] <= 0) & (net_worth_diff[1:] > 0))[0]
+        
+        if len(crossover_indices) > 0:
+            # We found a crossover point - this is where buy becomes better than rent
+            crossover_month = crossover_indices[0]
+            
+            # Calculate a more precise break-even point using linear interpolation
+            # between the month before and the month of crossover
+            if crossover_month >= 0:
+                # Get values on both sides of the crossover
+                before_diff = net_worth_diff[crossover_month]
+                after_diff = net_worth_diff[crossover_month + 1]
+                
+                # Calculate fraction of month where lines would exactly cross
+                if after_diff - before_diff != 0:  # Avoid division by zero
+                    fraction = -before_diff / (after_diff - before_diff)
+                else:
+                    fraction = 0
+                    
+                # Calculate the precise crossover month
+                precise_break_even_month = crossover_month + fraction
+                break_even_year = precise_break_even_month / 12
+                
+                # Update results dictionary with the break-even year
+                results["break_even_year"] = break_even_year  # Update results dict for print_summary
+                
+                # Add vertical line to plot
+                ax3.axvline(x=break_even_year, color='green', linestyle='--', alpha=0.7, 
+                           label=f'Break-even: {break_even_year:.1f} years')
+            else:
+                # Break-even occurs immediately
+                results["break_even_year"] = 0 
+        elif net_worth_diff[0] > 0:
+            # Buying is better from the start
+            results["break_even_year"] = 0
+            ax3.axvline(x=0, color='green', linestyle='--', alpha=0.7,
+                       label=f'Break-even at start')
+        else:
+            # No break-even found in the analysis period
+            results["break_even_year"] = None
+        
+        ax3.plot(results["time_years"], buy_net_worth_over_time, label="Buy (Net Worth)")
+        ax3.plot(results["time_years"], rent_net_worth_over_time, label="Rent (Net Worth)")
         ax3.set_title("Net Worth Comparison")
         ax3.set_xlabel("Years")
         ax3.set_ylabel("Net Worth (CAD)")
@@ -301,9 +342,16 @@ class RentVsBuy:
         print(f"Buy vs Rent Difference: ${abs(difference):,.0f} ({'buying' if difference > 0 else 'renting'} wins)")
         
         if results["break_even_year"] is not None:
-            years = int(results["break_even_year"])
-            months = int((results["break_even_year"] - years) * 12)
-            print(f"Break-even Point: {years} years and {months} months")
+            if results["break_even_year"] > 0:
+                years = int(results["break_even_year"])
+                months = round((results["break_even_year"] - years) * 12)
+                # Handle case where months rounds up to 12
+                if months == 12:
+                    years += 1
+                    months = 0
+                print(f"Break-even Point: {years} years and {months} months")
+            else:
+                print("Break-even Point: Immediate (buying better from start)")
         else:
             print("Break-even Point: None within the analysis period")
         
@@ -324,11 +372,11 @@ def main():
     # Run the analysis
     results = analysis.run_analysis()
     
-    # Print summary
-    analysis.print_summary(results)
-    
-    # Plot results
+    # Plot results (this calculates the break-even point)
     fig = analysis.plot_results(results)
+    
+    # Print summary (after break-even has been calculated)
+    analysis.print_summary(results)
     
     # Show the plot
     plt.show()
