@@ -13,7 +13,7 @@ class RentVsBuy:
         # Default parameters for Vancouver, BC (as of May 23, 2025)
         # Property parameters
         self.property_value = 1100000  # Average property price in CAD
-        self.property_appreciation_rate = 0.04  # 4% annual appreciation
+        self.property_appreciation_rate = 0.061  # 4% annual appreciation
         
         # Buying parameters
         self.down_payment_percent = 0.20  # 20% down payment
@@ -34,7 +34,7 @@ class RentVsBuy:
         self.investment_return_rate = 0.06  # 6% annual return on investments
         
         # Analysis parameters
-        self.time_horizon_years = 10  # Compare over 10 years
+        self.time_horizon_years = 20  # Compare over 10 years
         self.inflation_rate = 0.025  # 2.5% annual inflation
         self.marginal_tax_rate = 0.40  # 40% marginal tax rate
         
