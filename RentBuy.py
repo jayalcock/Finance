@@ -16,7 +16,7 @@ class RentVsBuy:
         self.property_appreciation_rate = 0.05  # 5% annual appreciation
         
         # Buying parameters
-        self.down_payment_percent = 0.20  # 20% down payment
+        self.down_payment_percent = 0.10  # 20% down payment
         self.mortgage_rate = 0.045  # 4.5% mortgage rate
         self.mortgage_term_years = 25  # 25 year amortization
         self.property_tax_rate = 0.00311827  # Vancouver property tax rate (0.311827%)
@@ -360,16 +360,227 @@ class RentVsBuy:
         print("      rental market, and personal financial circumstances.")
         print("="*80)
 
+    def calculate_optimal_down_payment(self, min_percent=0.05, max_percent=0.50, step=0.05):
+        """Calculate the optimal down payment percentage
+        
+        Args:
+            min_percent: Minimum down payment to test (default: 5%)
+            max_percent: Maximum down payment to test (default: 50%)
+            step: Step size between percentages to test (default: 5%)
+            
+        Returns:
+            dict: Results containing optimal down payment and analysis for each tested percentage
+        """
+        percentages = np.arange(min_percent, max_percent + step, step)
+        results_by_percent = {}
+        best_percent = None
+        best_difference = float('-inf')
+        
+        # Store original down payment percentage to restore later
+        original_down_payment = self.down_payment_percent
+        
+        for percent in percentages:
+            # Set the current down payment percentage
+            self.down_payment_percent = percent
+            
+            # Run the analysis with this down payment
+            results = self.run_analysis()
+            
+            # Calculate the financial advantage of buying vs renting
+            buy_vs_rent_diff = results["buy_final_net_worth"] - results["rent_final_net_worth"]
+            
+            # Calculate break-even point for this down payment
+            # Create a temporary figure to calculate the break-even point
+            temp_fig = self.plot_results(results)
+            plt.close(temp_fig)  # Close the figure as we don't need to display it
+            
+            # Store results for this percentage
+            results_by_percent[percent] = {
+                "buy_final_net_worth": results["buy_final_net_worth"],
+                "rent_final_net_worth": results["rent_final_net_worth"],
+                "difference": buy_vs_rent_diff,
+                "break_even_year": results["break_even_year"],
+                "monthly_mortgage": self.calculate_mortgage_payment()
+            }
+            
+            # Check if this is the best so far
+            if buy_vs_rent_diff > best_difference:
+                best_difference = buy_vs_rent_diff
+                best_percent = percent
+        
+        # Restore original down payment
+        self.down_payment_percent = original_down_payment
+        
+        # Return the results
+        return {
+            "optimal_percent": best_percent,
+            "optimal_difference": best_difference,
+            "results_by_percent": results_by_percent
+        }
+    
+    def plot_down_payment_comparison(self, optimal_results):
+        """Plot the comparison of different down payment percentages
+        
+        Args:
+            optimal_results: Results from calculate_optimal_down_payment
+            
+        Returns:
+            matplotlib.figure.Figure: The generated figure
+        """
+        # Extract data
+        percentages = sorted(list(optimal_results["results_by_percent"].keys()))
+        differences = [optimal_results["results_by_percent"][p]["difference"] for p in percentages]
+        buy_net_worths = [optimal_results["results_by_percent"][p]["buy_final_net_worth"] for p in percentages]
+        rent_net_worths = [optimal_results["results_by_percent"][p]["rent_final_net_worth"] for p in percentages]
+        
+        # Highlight optimal percentage
+        optimal_percent = optimal_results["optimal_percent"]
+        
+        # Create figure
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+        
+        # Plot financial advantage
+        ax1.plot(percentages, differences, 'o-', color='blue')
+        ax1.axvline(x=optimal_percent, color='green', linestyle='--', 
+                   label=f'Optimal: {optimal_percent*100:.0f}%')
+        ax1.set_title('Financial Advantage of Buying vs Renting by Down Payment')
+        ax1.set_xlabel('Down Payment Percentage')
+        ax1.set_ylabel('Buy vs Rent Advantage (CAD)')
+        ax1.grid(True)
+        ax1.legend()
+        ax1.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x*100:.0f}%'))
+        ax1.yaxis.set_major_formatter(FuncFormatter(self.money_formatter))
+        
+        # Plot net worths
+        ax2.plot(percentages, buy_net_worths, 'o-', color='blue', label='Buy Net Worth')
+        ax2.plot(percentages, rent_net_worths, 'o-', color='red', label='Rent Net Worth')
+        ax2.axvline(x=optimal_percent, color='green', linestyle='--',
+                   label=f'Optimal: {optimal_percent*100:.0f}%')
+        ax2.set_title('Final Net Worth by Down Payment')
+        ax2.set_xlabel('Down Payment Percentage')
+        ax2.set_ylabel('Final Net Worth (CAD)')
+        ax2.grid(True)
+        ax2.legend()
+        ax2.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x*100:.0f}%'))
+        ax2.yaxis.set_major_formatter(FuncFormatter(self.money_formatter))
+        
+        plt.tight_layout()
+        
+        return fig
+    
+    def print_optimal_down_payment_summary(self, optimal_results):
+        """Print a summary of the optimal down payment analysis
+        
+        Args:
+            optimal_results: Results from calculate_optimal_down_payment
+        """
+        print("\n" + "="*80)
+        print(f"OPTIMAL DOWN PAYMENT ANALYSIS - VANCOUVER, BC ({datetime.now().strftime('%Y-%m-%d')})")
+        print("="*80)
+        
+        # Extract optimal percentage
+        optimal_percent = optimal_results["optimal_percent"]
+        optimal_diff = optimal_results["optimal_difference"]
+        
+        print(f"\nOptimal Down Payment: {optimal_percent*100:.0f}%")
+        print(f"Financial Advantage: ${optimal_diff:,.0f}")
+        
+        # Table header
+        print("\nDOWN PAYMENT COMPARISON:")
+        print(f"{'Down Payment':<15} {'Monthly Pmt':<15} {'Break-even':<15} {'Buyer Net Worth':<20} {'Renter Net Worth':<20} {'Advantage':<15}")
+        print("-" * 100)
+        
+        # Sort percentages
+        sorted_percentages = sorted(optimal_results["results_by_percent"].keys())
+        
+        # Print results for each percentage
+        for percent in sorted_percentages:
+            result = optimal_results["results_by_percent"][percent]
+            buy_worth = result["buy_final_net_worth"]
+            rent_worth = result["rent_final_net_worth"]
+            diff = result["difference"]
+            monthly_payment = result["monthly_mortgage"]
+            
+            # Format the break-even time
+            break_even = result["break_even_year"]
+            if break_even is None:
+                break_even_str = "Never"
+            elif break_even == 0:
+                break_even_str = "Immediate"
+            else:
+                years = int(break_even)
+                months = round((break_even - years) * 12)
+                if months == 12:
+                    years += 1
+                    months = 0
+                break_even_str = f"{years}y {months}m"
+            
+            # Highlight the optimal percentage
+            highlight = "* " if percent == optimal_percent else "  "
+            
+            print(f"{highlight}{percent*100:<13.0f}% ${monthly_payment:<13,.0f} {break_even_str:<15} ${buy_worth:<18,.0f} ${rent_worth:<18,.0f} ${diff:<13,.0f}")
+        
+        print("\nNOTE: The optimal down payment maximizes your financial advantage (buyer net worth - renter net worth).")
+        print("      This analysis considers your specific financial parameters including mortgage rate,")
+        print("      property appreciation rate, investment returns, and tax implications.")
+        print("      A higher down payment reduces mortgage interest but may reduce potential investment returns.")
+        print("="*80)
+
 def main():
     # Create and configure the analysis
     analysis = RentVsBuy()
     
-    # User can modify parameters here
-    # For example:
-    # analysis.property_value = 1200000
-    # analysis.monthly_rent = 2800
+    # =====================================================================
+    # USER CONFIGURATION SECTION
+    # =====================================================================
+    # Modify these parameters to match your specific situation
     
-    # Run the analysis
+    # Property parameters
+    # analysis.property_value = 1200000          # Property price in CAD
+    # analysis.property_appreciation_rate = 0.04  # 4% annual appreciation
+    
+    # Buying parameters
+    # analysis.down_payment_percent = 0.20       # 20% down payment
+    # analysis.mortgage_rate = 0.04              # 4% mortgage rate
+    # analysis.mortgage_term_years = 30          # 30 year amortization
+    
+    # Renting parameters
+    # analysis.monthly_rent = 2800               # Monthly rent in CAD
+    # analysis.rent_increase_rate = 0.03         # 3% annual increase
+    
+    # Investment parameters
+    # analysis.investment_return_rate = 0.07     # 7% annual return
+    
+    # Analysis parameters
+    # analysis.time_horizon_years = 10           # Compare over 10 years
+    
+    # =====================================================================
+    # ANALYSIS OPTIONS
+    # =====================================================================
+    
+    # Find the optimal down payment percentage (may take a moment to run)
+    calculate_optimal = True                     # Set to False to skip
+    
+    if calculate_optimal:
+        # Calculate the optimal down payment
+        print("\nCalculating optimal down payment percentage...")
+        optimal_results = analysis.calculate_optimal_down_payment(
+            min_percent=0.05,  # Start at 5% down payment
+            max_percent=0.50,  # Up to 50% down payment
+            step=0.05          # Test every 5% increment
+        )
+        
+        # Plot the comparison of different down payments
+        opt_fig = analysis.plot_down_payment_comparison(optimal_results)
+        
+        # Print optimal down payment summary
+        analysis.print_optimal_down_payment_summary(optimal_results)
+        
+        # Set the optimal down payment for the main analysis
+        analysis.down_payment_percent = optimal_results['optimal_percent']
+        print(f"\nSetting down payment to optimal value: {analysis.down_payment_percent*100:.0f}%")
+    
+    # Run the standard analysis
     results = analysis.run_analysis()
     
     # Plot results (this calculates the break-even point)
@@ -378,10 +589,11 @@ def main():
     # Print summary (after break-even has been calculated)
     analysis.print_summary(results)
     
-    # Show the plot
+    # Show the plot(s)
     plt.show()
     
     print("\nYou can modify the input parameters in the main() function to customize the analysis.")
+    print("Set calculate_optimal=True to find the optimal down payment percentage.")
     print("Consider factors like property location, size, expected length of stay, etc.")
 
 if __name__ == "__main__":
