@@ -39,6 +39,9 @@ class RentVsBuy:
         self.inflation_rate = 0.025  # 2.5% annual inflation
         self.marginal_tax_rate = 0.40  # 40% marginal tax rate
         
+        # Strata/Condo fees
+        self.strata_fee_monthly = 400.0  # Monthly strata/condo fee (CAD)
+        
     def get_cmhc_premium_rate(self):
         """Determine the CMHC insurance premium rate based on down payment and property value."""
         # CMHC not available for homes > $1.5M or down payment >= 20%
@@ -150,6 +153,7 @@ class RentVsBuy:
             monthly_property_tax = (property_values[month] * self.property_tax_rate) / 12
             monthly_maintenance = (property_values[month] * self.maintenance_percent) / 12
             monthly_insurance = (property_values[month] * self.insurance_rate) / 12
+            monthly_strata = self.strata_fee_monthly
             
             mortgage_interest = self.calculate_mortgage_interest(month)
             mortgage_principal = self.calculate_mortgage_principal(month)
@@ -157,7 +161,7 @@ class RentVsBuy:
             # Tax benefit from mortgage interest and property tax (if applicable)
             tax_benefit = (mortgage_interest + monthly_property_tax) * self.marginal_tax_rate / 12
             
-            buy_monthly_cost = monthly_mortgage + monthly_property_tax + monthly_maintenance + monthly_insurance - tax_benefit
+            buy_monthly_cost = monthly_mortgage + monthly_property_tax + monthly_maintenance + monthly_insurance + monthly_strata - tax_benefit
             buy_costs[month] = buy_costs[month - 1] + buy_monthly_cost
             
             # Rent scenario monthly costs
@@ -373,6 +377,7 @@ class RentVsBuy:
         print(f"Property Tax Rate: {self.property_tax_rate*100:.3f}% annually")
         print(f"Maintenance: {self.maintenance_percent*100:.1f}% of property value annually")
         print(f"Property Insurance: {self.insurance_rate*100:.2f}% of property value annually")
+        print(f"Strata/Condo Fees: ${self.strata_fee_monthly:,.2f} per month")
         print(f"Buying Closing Costs: ${self.buying_closing_costs:,.0f} ({self.buying_closing_costs/self.property_value*100:.1f}% of property)")
         print(f"Selling Closing Costs: {self.selling_closing_costs_percent*100:.1f}% of final property value")
         print(f"Initial Monthly Rent: ${self.monthly_rent:.0f}")
