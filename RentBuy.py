@@ -16,7 +16,7 @@ class RentVsBuy:
         self.property_appreciation_rate = 0.05  # 5% annual appreciation
         
         # Buying parameters
-        self.down_payment_percent = 0.10  # 20% down payment
+        self.down_payment_percent = 0.20  # 20% down payment
         self.mortgage_rate = 0.045  # 4.5% mortgage rate
         self.mortgage_term_years = 25  # 25 year amortization
         self.property_tax_rate = 0.00311827  # Vancouver property tax rate (0.311827%)
@@ -24,6 +24,8 @@ class RentVsBuy:
         self.insurance_rate = 0.0035  # 0.35% of property value annually
         self.buying_closing_costs = 0.015 * self.property_value  # 1.5% of property value
         self.selling_closing_costs_percent = 0.08  # 8% (includes realtor fees, legal, etc.)
+        self.is_first_time_buyer = False  # Whether buyer is a first-time home buyer
+        self.is_new_construction = False  # Whether property is newly constructed
         
         # Renting parameters
         self.monthly_rent = 2600  # Average 1-bedroom rent in CAD
@@ -32,8 +34,7 @@ class RentVsBuy:
         
         # Investment parameters
         self.investment_return_rate = 0.06  # 6% annual return on investments
-        
-        # Analysis parameters
+          # Analysis parameters
         self.time_horizon_years = 15  # Compare over 15 years
         self.inflation_rate = 0.025  # 2.5% annual inflation
         self.marginal_tax_rate = 0.40  # 40% marginal tax rate
@@ -43,15 +44,24 @@ class RentVsBuy:
         # CMHC not available for homes > $1.5M or down payment >= 20%
         if self.property_value > 1_500_000 or self.down_payment_percent >= 0.20:
             return 0.0
-        # Down payment rules
+        
+        # Get base premium rate by down payment
         if self.down_payment_percent >= 0.15:
-            return 0.028
+            base_rate = 0.028
         elif self.down_payment_percent >= 0.10:
-            return 0.031
+            base_rate = 0.031
         elif self.down_payment_percent >= 0.05:
-            return 0.04
+            base_rate = 0.04
         else:
             return 0.0  # Should not happen, but fallback
+        
+        # Add 20 basis points (0.002) for 30-year amortization for first-time buyers or new construction
+        # As of December 15, 2024 rule
+        if (self.mortgage_term_years > 25 and 
+            (self.is_first_time_buyer or self.is_new_construction)):
+            base_rate += 0.002
+            
+        return base_rate
 
     def calculate_cmhc_premium(self):
         """Calculate the CMHC insurance premium amount."""
@@ -310,16 +320,24 @@ class RentVsBuy:
                         xytext=(0, 3),  # 3 points vertical offset
                         textcoords="offset points",
                         ha='center', va='bottom')
-        
         difference = results["buy_vs_rent_difference"]
         winner = "Buying" if difference > 0 else "Renting"
         diff_text = f"{winner} wins by ${abs(difference):,.0f}"
         ax4.text(0.5, 0.9, diff_text, horizontalalignment='center', transform=ax4.transAxes, fontsize=12)
-          # Adjust layout and add super title
+        
+        # Adjust layout and add super title
         current_date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Get CMHC details for title
+        cmhc_info = ""
+        cmhc_premium = self.calculate_cmhc_premium()
+        if cmhc_premium > 0:
+            cmhc_rate = self.get_cmhc_premium_rate()
+            cmhc_info = f", CMHC: {cmhc_rate*100:.1f}%"
+        
         plt.suptitle(f"Rent vs Buy Analysis - Vancouver, BC ({current_date})\n"
-                    f"Property: ${self.property_value:,.0f}, Down Payment: {self.down_payment_percent*100:.0f}%, "
-                    f"Mortgage Rate: {self.mortgage_rate*100:.2f}%\n"
+                    f"Property: ${self.property_value:,.0f}, Down Payment: {self.down_payment_percent*100:.0f}%{cmhc_info}, "
+                    f"Mortgage Rate: {self.mortgage_rate*100:.2f}%, Term: {self.mortgage_term_years}y\n"
                     f"Initial Rent: ${self.monthly_rent:.0f}/mo, Renter Insurance: ${self.renter_insurance/12:.2f}/mo, Investment Return: {self.investment_return_rate*100:.1f}%", 
                     fontsize=14)
         
@@ -337,6 +355,18 @@ class RentVsBuy:
         print("\nINPUT PARAMETERS:")
         print(f"Property Value: ${self.property_value:,.0f}")
         print(f"Down Payment: {self.down_payment_percent*100:.0f}% (${self.property_value * self.down_payment_percent:,.0f})")
+        
+        # CMHC premium information
+        cmhc_rate = self.get_cmhc_premium_rate()
+        cmhc_premium = self.calculate_cmhc_premium()
+        if cmhc_premium > 0:
+            print(f"CMHC Insurance: {cmhc_rate*100:.2f}% premium (${cmhc_premium:,.0f})")
+            if self.mortgage_term_years > 25 and (self.is_first_time_buyer or self.is_new_construction):
+                print(f"  - Includes 0.20% premium for 30-year amortization")
+                print(f"  - Eligible as {'first-time buyer' if self.is_first_time_buyer else 'new construction'}")
+        else:
+            print("CMHC Insurance: Not required (20%+ down payment or property > $1.5M)")
+            
         print(f"Mortgage Rate: {self.mortgage_rate*100:.2f}%")
         print(f"Mortgage Term: {self.mortgage_term_years} years")
         print(f"Property Appreciation Rate: {self.property_appreciation_rate*100:.1f}% annually")
@@ -352,12 +382,30 @@ class RentVsBuy:
         print(f"Analysis Period: {self.time_horizon_years} years")
         print(f"Inflation Rate: {self.inflation_rate*100:.1f}% annually")
         print(f"Marginal Tax Rate: {self.marginal_tax_rate*100:.0f}%")
-        
-        # Calculate average monthly costs
+          # Calculate average monthly costs
         avg_buy_monthly = (results["buy_costs"][-1] - results["buy_costs"][0]) / (self.time_horizon_years * 12)
         avg_rent_monthly = (results["rent_costs"][-1] - results["rent_costs"][0]) / (self.time_horizon_years * 12)
         
         print("\nRESULTS:")
+        
+        # Show mortgage details including CMHC premium
+        mortgage_payment = self.calculate_mortgage_payment()
+        principal = self.property_value * (1 - self.down_payment_percent)
+        cmhc_premium = self.calculate_cmhc_premium()
+        total_borrowed = principal + cmhc_premium
+        
+        print("\nMortgage Details:")
+        print(f"Monthly Payment: ${mortgage_payment:,.2f}")
+        print(f"Principal Amount: ${principal:,.0f}")
+        if cmhc_premium > 0:
+            cmhc_rate = self.get_cmhc_premium_rate()
+            print(f"CMHC Premium: ${cmhc_premium:,.0f} ({cmhc_rate*100:.2f}% of loan)")
+            print(f"Total Borrowed (Principal + CMHC): ${total_borrowed:,.0f}")
+            if self.mortgage_term_years > 25 and (self.is_first_time_buyer or self.is_new_construction):
+                print(f"  - Includes 0.20% premium increase for 30-year amortization")
+                print(f"  - Eligible due to {'first-time buyer status' if self.is_first_time_buyer else 'new construction'}")
+        
+        print("\nMonthly Costs:")
         print(f"Average Monthly Cost - Buying: ${avg_buy_monthly:,.0f}")
         print(f"Average Monthly Cost - Renting: ${avg_rent_monthly:,.0f}")
         print(f"Monthly Difference: ${abs(avg_buy_monthly - avg_rent_monthly):,.0f} ({'buying' if avg_buy_monthly > avg_rent_monthly else 'renting'} costs more)")
@@ -570,11 +618,12 @@ def main():
     # Property parameters
     # analysis.property_value = 1200000          # Property price in CAD
     # analysis.property_appreciation_rate = 0.04  # 4% annual appreciation
-    
-    # Buying parameters
+      # Buying parameters
     # analysis.down_payment_percent = 0.20       # 20% down payment
     # analysis.mortgage_rate = 0.04              # 4% mortgage rate
     # analysis.mortgage_term_years = 30          # 30 year amortization
+    # analysis.is_first_time_buyer = True        # First-time home buyer status
+    # analysis.is_new_construction = False       # New construction property
     
     # Renting parameters
     # analysis.monthly_rent = 2800               # Monthly rent in CAD
