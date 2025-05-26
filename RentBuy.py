@@ -38,29 +38,61 @@ class RentVsBuy:
         self.inflation_rate = 0.025  # 2.5% annual inflation
         self.marginal_tax_rate = 0.40  # 40% marginal tax rate
         
+    def get_cmhc_premium_rate(self):
+        """Determine the CMHC insurance premium rate based on down payment and property value."""
+        # CMHC not available for homes > $1.5M or down payment >= 20%
+        if self.property_value > 1_500_000 or self.down_payment_percent >= 0.20:
+            return 0.0
+        # Down payment rules
+        if self.down_payment_percent >= 0.15:
+            return 0.028
+        elif self.down_payment_percent >= 0.10:
+            return 0.031
+        elif self.down_payment_percent >= 0.05:
+            return 0.04
+        else:
+            return 0.0  # Should not happen, but fallback
+
+    def calculate_cmhc_premium(self):
+        """Calculate the CMHC insurance premium amount."""
+        # For homes > $500,000, 5% on first $500k, 10% on remainder
+        if self.property_value > 500_000:
+            min_down = 0.05 * 500_000 + 0.10 * (self.property_value - 500_000)
+        else:
+            min_down = 0.05 * self.property_value
+        # Only apply if down payment < 20% and property <= $1.5M
+        if self.down_payment_percent < 0.20 and self.property_value <= 1_500_000:
+            loan_amount = self.property_value - (self.property_value * self.down_payment_percent)
+            premium_rate = self.get_cmhc_premium_rate()
+            premium = loan_amount * premium_rate
+            return premium
+        else:
+            return 0.0
+
     def calculate_mortgage_payment(self):
-        """Calculate the monthly mortgage payment"""
+        """Calculate the monthly mortgage payment, including CMHC premium if applicable."""
         principal = self.property_value * (1 - self.down_payment_percent)
+        cmhc_premium = self.calculate_cmhc_premium()
+        total_principal = principal + cmhc_premium
         monthly_rate = self.mortgage_rate / 12
         num_payments = self.mortgage_term_years * 12
-        
-        # Monthly payment formula
         if monthly_rate == 0:
-            return principal / num_payments
+            return total_principal / num_payments
         else:
-            return principal * (monthly_rate * (1 + monthly_rate) ** num_payments) / ((1 + monthly_rate) ** num_payments - 1)
-    
+            return total_principal * (monthly_rate * (1 + monthly_rate) ** num_payments) / ((1 + monthly_rate) ** num_payments - 1)
+
     def calculate_remaining_mortgage_balance(self, months):
-        """Calculate the remaining mortgage balance after a number of months"""
+        """Calculate the remaining mortgage balance after a number of months, including CMHC premium."""
         principal = self.property_value * (1 - self.down_payment_percent)
+        cmhc_premium = self.calculate_cmhc_premium()
+        total_principal = principal + cmhc_premium
         monthly_rate = self.mortgage_rate / 12
         num_payments = self.mortgage_term_years * 12
         payment = self.calculate_mortgage_payment()
-        
         if monthly_rate == 0:
-            return max(0, principal - (payment * months))
+            return max(0, total_principal - (payment * months))
         else:
-            return max(0, principal * ((1 + monthly_rate) ** num_payments - (1 + monthly_rate) ** months) / 
+            return max(0, total_principal * ((1 + monthly_rate) ** num_payments - (1 + monthly_rate) ** months) / 
                      ((1 + monthly_rate) ** num_payments - 1))
     
     def calculate_mortgage_interest(self, month):
