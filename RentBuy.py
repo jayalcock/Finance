@@ -24,11 +24,11 @@ class RentVsBuy:
         self.insurance_rate = 0.0035  # 0.35% of property value annually
         self.buying_closing_costs = 0.015 * self.property_value  # 1.5% of property value
         self.selling_closing_costs_percent = 0.08  # 8% (includes realtor fees, legal, etc.)
-        self.is_first_time_buyer = False  # Whether buyer is a first-time home buyer
+        self.is_first_time_buyer = True  # Whether buyer is a first-time home buyer
         self.is_new_construction = False  # Whether property is newly constructed
         
         # Renting parameters
-        self.monthly_rent = 2600  # Average 1-bedroom rent in CAD
+        self.monthly_rent = 2800  # Average 1-bedroom rent in CAD
         self.rent_increase_rate = 0.04  # 4% annual increase (BC allows 2% + inflation)
         self.renter_insurance = 53.65 * 12  # $53.65/month for renter's insurance
         
@@ -217,7 +217,7 @@ class RentVsBuy:
         formatter = FuncFormatter(self.money_formatter)
         
         # Create figure and subplots
-        fig = plt.figure(figsize=(15, 20))
+        fig = plt.figure(figsize=(12, 8))
         
         # 1. Cumulative costs
         ax1 = fig.add_subplot(4, 1, 1)
